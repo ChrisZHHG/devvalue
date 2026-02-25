@@ -172,6 +172,7 @@ export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
        cacheReadTokens  * pricing.cacheReadPer1M) / 1_000_000;
 
     return {
+      uuid: typeof record['uuid'] === 'string' ? record['uuid'] : undefined,
       timestamp,
       model,
       inputTokens,

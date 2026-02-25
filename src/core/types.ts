@@ -26,6 +26,8 @@ export interface FlowState {
 }
 
 export interface TokenUsage {
+  /** JSONL record UUID — used for deduplication across restarts. */
+  uuid?: string;
   /** Unix milliseconds */
   timestamp: number;
   model: string;

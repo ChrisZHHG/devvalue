@@ -24,6 +24,18 @@ function readConfig(): DevValueConfig {
   };
 }
 
+/**
+ * Derive the Claude Code project directory for a workspace root.
+ *
+ * Claude Code encodes the workspace path as the project dir name by replacing
+ * every `/` and space with `-`. For example:
+ *   /Users/alice/my project  →  ~/.claude/projects/-Users-alice-my-project
+ */
+function workspaceToClaudeProjectDir(workspaceRoot: string): string {
+  const encoded = workspaceRoot.replace(/[/ ]/g, '-');
+  return path.join(os.homedir(), '.claude', 'projects', encoded);
+}
+
 function getOrCreate(sessions: Map<string, Session>, branch: string): Session {
   if (!sessions.has(branch)) {
     sessions.set(branch, {
@@ -51,14 +63,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const storage = new StorageAdapter(context.globalState);
   const sessions = storage.loadSessions();
 
+  // Build seen-UUID set from persisted sessions so we skip records that were
+  // already counted in a previous run (restart deduplication).
+  const seenUuids = new Set<string>();
+  for (const session of sessions.values()) {
+    for (const u of session.tokenUsage) {
+      if (u.uuid) { seenUuids.add(u.uuid); }
+    }
+  }
+
   let currentBranch = await resolver.currentBranch();
   let baseFocus = sessions.get(currentBranch)?.focusSeconds ?? 0;
 
   const activityAdapter = new ActivityAdapter(engine, resolver);
   activityAdapter.activate();
 
+  // Scope the sniffer to this workspace's Claude project directory only.
+  // Claude Code maps /path/to/workspace → ~/.claude/projects/-path-to-workspace/
+  const claudeProjectDir = workspaceToClaudeProjectDir(workspaceRoot);
+  const snifferGlob = path.join(claudeProjectDir, '*.jsonl');
+  outputChannel.appendLine(`[DevValue] Watching Claude logs: ${snifferGlob}`);
+
   const fileWatcher = new FileWatcherAdapter(
-    config.claudeLogGlob,
+    snifferGlob,
     onUsage,
     outputChannel,
   );
@@ -99,6 +126,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   function onUsage(usage: TokenUsage): void {
+    if (usage.uuid) {
+      if (seenUuids.has(usage.uuid)) { return; }
+      seenUuids.add(usage.uuid);
+    }
     const branch = usage.branchName || currentBranch;
     const session = getOrCreate(sessions, branch);
     session.tokenUsage.push(usage);

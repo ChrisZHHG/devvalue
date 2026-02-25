@@ -243,6 +243,18 @@ export function getDashboardHtml(nonce: string): string {
     .footer .total-lbl { opacity: 0.65; }
     .footer .total-val { font-weight: 700; font-variant-numeric: tabular-nums; }
 
+    /* ── Pricing notice ──────────────────────────────────────── */
+    .pricing-notice {
+      text-align: center;
+      padding: 4px 0;
+      color: var(--vscode-descriptionForeground, #aaa);
+      font-size: 11px;
+      font-style: italic;
+      border-bottom: 1px solid var(--vscode-widget-border, #454545);
+      margin-bottom: 0;
+      flex-shrink: 0;
+    }
+
     /* ── Empty / loading ─────────────────────────────────────── */
     .loading, .empty-detail {
       display: flex; flex-direction: column;
@@ -258,6 +270,10 @@ export function getDashboardHtml(nonce: string): string {
 
   <div id="summary-bar" class="summary-bar">
     <span class="hint">Loading&hellip;</span>
+  </div>
+
+  <div class="pricing-notice">
+    ⓘ Based on Anthropic's published API rates · Enterprise & Education pricing may differ
   </div>
 
   <div class="content">
