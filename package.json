@@ -1,5 +1,6 @@
 {
   "name": "devvalue",
+  "publisher": "ChrisZhang",
   "displayName": "devvalue",
   "description": "Measure the true cost of AI-era software engineering — human cognition + AI compute, per feature.",
   "version": "0.0.1",
