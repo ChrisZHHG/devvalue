@@ -3,7 +3,11 @@
   "publisher": "ChrisZhang",
   "displayName": "devvalue",
   "description": "Measure the true cost of AI-era software engineering — human cognition + AI compute, per feature.",
-  "version": "0.0.1",
+  "version": "0.0.3",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ChrisZhang/devvalue.git"
+  },
   "engines": {
     "vscode": "^1.109.0"
   },

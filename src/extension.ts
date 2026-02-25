@@ -73,6 +73,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   let currentBranch = await resolver.currentBranch();
+
   let baseFocus = sessions.get(currentBranch)?.focusSeconds ?? 0;
 
   const activityAdapter = new ActivityAdapter(engine, resolver);
