@@ -1,6 +1,10 @@
 # DevValue — The VibeCoder's Cognitive & Value Tracker
 
-VS Code Extension. Not a web app. No express/fastify.
+## CURRENT SPRINT: v0.0.2
+- CLI tool: `devvalue report` command, reuse core/ layer, new CLI adapter in src/adapters/cli/
+- Cursor token sniffer: investigate ~/.cursor/ logs, implement CursorTokenSniffer
+
+VS Code Extension + CLI. Not a web app. No express/fastify.
 
 ## WHAT THIS DOES
 Tracks the TRUE cost of AI-era software engineering per git branch:
