@@ -9,15 +9,68 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "devvalue.helloWorld",
-        "title": "Hello World"
+        "command": "devvalue.openDashboard",
+        "title": "DevValue: Open Dashboard",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "devvalue.startTracking",
+        "title": "DevValue: Start Tracking",
+        "icon": "$(play)"
+      },
+      {
+        "command": "devvalue.stopTracking",
+        "title": "DevValue: Stop Tracking",
+        "icon": "$(stop)"
+      },
+      {
+        "command": "devvalue.resetBranch",
+        "title": "DevValue: Reset Branch Data",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "devvalue.exportData",
+        "title": "DevValue: Export Data as JSON",
+        "icon": "$(export)"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "DevValue",
+      "properties": {
+        "devvalue.hourlyRate": {
+          "type": "number",
+          "default": 75,
+          "description": "Hourly rate in USD."
+        },
+        "devvalue.maxIdleTimeout": {
+          "type": "number",
+          "default": 300,
+          "description": "Base idle timeout in seconds. Extends 4× in flow state (20 min max)."
+        },
+        "devvalue.flowThreshold": {
+          "type": "number",
+          "default": 3,
+          "description": "Events per minute needed to enter flow state."
+        },
+        "devvalue.claudeLogGlob": {
+          "type": "string",
+          "default": "~/.claude/projects/*/*.jsonl",
+          "description": "Glob for Claude Code session logs."
+        },
+        "devvalue.enableStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show cost summary in status bar."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run package",
