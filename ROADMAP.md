@@ -162,11 +162,36 @@ Distribution (multiple frontends):
 5. Product Hunt
 6. GitHub badge for viral growth
 
-### Pricing Model (Future)
-- Free: VS Code extension + CLI, unlimited personal use
-- Pro ($10-20/mo): Team dashboard, export/invoicing, calibration
-- Enterprise: Custom pricing, SSO, budget enforcement, MCP Server
+### Business Model: Data-Driven AI Engineering Intelligence
 
-### Key Metric to Track
-- "What did this feature cost?" answered per session
-- Cross-tool cost visibility as primary activation metric
+**Phase 1 — Free Tool, Collect Data (NOW)**
+- Free VS Code extension + CLI for all developers
+- With user consent, collect anonymized: dev time per task type, token usage per model, branch names (task category proxy), cost per feature
+- Build the world's first real-world AI coding cost & efficiency dataset
+
+**Phase 2 — Benchmark & Recommendations (v0.2+)**
+- "Sonnet 4.6 completes auth features 30% cheaper than Opus on average"
+- "For React component work, Cursor users spend 40% less than Claude Code users"
+- Task type detection from branch names (feat/, fix/, refactor/, test/)
+- Per-task model recommendation: "For this type of work, we recommend Model X — saves $Y on average"
+- Estimated time & cost before starting: "Similar tasks took ~2.5h and $18 on average"
+
+**Phase 3 — Enterprise Intelligence Platform (v1.0+)**
+- Sell aggregated insights to enterprise & government clients:
+  - "Which AI tools should we standardize on for our 500-person eng team?"
+  - "What's the optimal model mix to minimize cost while maintaining quality?"
+  - "How does our AI spending efficiency compare to industry benchmarks?"
+- Custom dashboards for CTO/VP Eng: cost per team, per project, per sprint
+- Compliance reporting: "How much AI-generated code is in our codebase?"
+- Pricing: Enterprise SaaS ($500-5000/mo based on team size)
+
+**The Moat: Data Network Effect**
+- More users → more data → better recommendations → more users
+- No competitor can replicate this dataset without building the free tool first
+- First mover advantage: every month of data collection widens the gap
+
+### Key Metrics to Track
+- Free tier: installs, DAU, data points collected per day
+- Activation: "What did this feature cost?" answered per session
+- Retention: weekly active users returning to check costs
+- Enterprise pipeline: companies requesting team dashboards
