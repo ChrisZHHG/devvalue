@@ -13,6 +13,10 @@ import { StorageAdapter } from './adapter/StorageAdapter.js';
 import { StatusBarAdapter } from './adapter/StatusBarAdapter.js';
 import { DashboardPanel } from './webview/DashboardPanel.js';
 
+// Module-level refs so deactivate() can flush sessions on shutdown.
+let _shutdownStorage: StorageAdapter | undefined;
+let _shutdownSessions: Map<string, Session> | undefined;
+
 function readConfig(): DevValueConfig {
   const c = vscode.workspace.getConfiguration('devvalue');
   return {
@@ -60,8 +64,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const resolver = new GitResolver(workspaceRoot);
   let engine = new PtaFlowEngine(config);
   let calc = new CostCalculator(config.hourlyRate);
-  const storage = new StorageAdapter(context.globalState);
+
+  // One-time migration: move globalState sessions into workspaceState.
+  const MIGRATION_KEY = 'devvalue.globalStateMigrated';
+  const SESSION_KEY = 'devvalue.sessions';
+  if (!context.workspaceState.get<boolean>(MIGRATION_KEY)) {
+    const globalData = context.globalState.get<unknown[]>(SESSION_KEY);
+    if (globalData && globalData.length > 0) {
+      await context.workspaceState.update(SESSION_KEY, globalData);
+    }
+    await context.workspaceState.update(MIGRATION_KEY, true);
+    await context.globalState.update(SESSION_KEY, undefined);
+  }
+
+  const storage = new StorageAdapter(context.workspaceState);
   const sessions = storage.loadSessions();
+
+  // Expose to deactivate() for shutdown flush.
+  _shutdownStorage = storage;
+  _shutdownSessions = sessions;
 
   // Build seen-UUID set from persisted sessions so we skip records that were
   // already counted in a previous run (restart deduplication).
@@ -106,8 +127,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     console.log('[DevValue] tick fired, currentBranch=', currentBranch);
     const newBranch = await resolver.currentBranch();
     if (newBranch !== currentBranch) {
+      // Guardrail: save immediately on branch switch so seenUuids are always
+      // persisted before we change context. Without this, a VS Code restart on
+      // the new branch would re-read old JSONL entries (byte offset resets)
+      // and — when gitBranch is absent in the record — wrongly attribute them
+      // to the new branch because those UUIDs weren't in the saved sessions.
       const old = getOrCreate(sessions, currentBranch);
       old.focusSeconds = baseFocus + engine.getActiveSeconds();
+      await storage.saveSessions(sessions);
+
+      outputChannel.appendLine(
+        `[DevValue] Branch switched: ${currentBranch} → ${newBranch}. Sessions flushed.`,
+      );
+
       currentBranch = newBranch;
       engine.reset();
       baseFocus = sessions.get(newBranch)?.focusSeconds ?? 0;
@@ -120,8 +152,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     DashboardPanel.currentPanel?.update({ sessions, currentBranch, config });
 
+    // Save focusSeconds every 30 s — losing a few seconds of focus time on an
+    // unexpected crash is acceptable. UUID dedup is saved immediately in
+    // onUsage() where it matters.
     tickCount++;
-    if (tickCount % 5 === 0) {
+    if (tickCount % 30 === 0) {
       await storage.saveSessions(sessions);
     }
   }
@@ -134,6 +169,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const branch = usage.branchName || currentBranch;
     const session = getOrCreate(sessions, branch);
     session.tokenUsage.push(usage);
+    // Save immediately so the new UUID is persisted before any restart.
+    // This is the critical guardrail against cross-branch token re-attribution.
+    void storage.saveSessions(sessions);
   }
 
   const tickHandle = setInterval(
@@ -241,4 +279,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 }
 
-export function deactivate(): void {}
+export async function deactivate(): Promise<void> {
+  // Final flush so seenUuids survive a clean shutdown (window close, reload).
+  if (_shutdownStorage && _shutdownSessions) {
+    await _shutdownStorage.saveSessions(_shutdownSessions);
+  }
+}
