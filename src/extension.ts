@@ -63,34 +63,72 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const storage = new StorageAdapter(context.globalState);
   const sessions = storage.loadSessions();
 
-  // Build seen-UUID set from persisted sessions so we skip records that were
-  // already counted in a previous run (restart deduplication).
+  // Build dedup sets from persisted sessions.
+  // seenUuids: prevents re-counting the same JSONL record after a restart.
+  // seenMessageIds: prevents double-counting the same API call when it appears
+  //   in both a parent session's progress records AND a subagent JSONL file.
   const seenUuids = new Set<string>();
+  const seenMessageIds = new Set<string>();
   for (const session of sessions.values()) {
     for (const u of session.tokenUsage) {
-      if (u.uuid) { seenUuids.add(u.uuid); }
+      if (u.uuid)       { seenUuids.add(u.uuid); }
+      if (u.messageId)  { seenMessageIds.add(u.messageId); }
     }
   }
 
   let currentBranch = await resolver.currentBranch();
 
+  // ── Bug #3 — Migrate persisted 'HEAD' session to its real branch ──────────
+  // JSONL records written before Claude Code fixed its branch resolver carry
+  // gitBranch='HEAD'. Resolve them via the git reflog and merge into the
+  // correct branch session.
+  const headSession = sessions.get('HEAD');
+  if (headSession && headSession.tokenUsage.length > 0) {
+    const repTs = headSession.tokenUsage[0].timestamp;
+    const resolvedBranch = await resolver.branchAtTime(repTs);
+    if (resolvedBranch !== 'HEAD') {
+      const target = getOrCreate(sessions, resolvedBranch);
+      for (const usage of headSession.tokenUsage) {
+        const alreadyPresent = target.tokenUsage.some(
+          u => u.messageId && u.messageId === usage.messageId,
+        );
+        if (!alreadyPresent) {
+          target.tokenUsage.push(usage);
+        }
+      }
+      target.focusSeconds += headSession.focusSeconds;
+      sessions.delete('HEAD');
+      outputChannel.appendLine(
+        `[DevValue] Migrated HEAD session (${headSession.tokenUsage.length} records) → ${resolvedBranch}`,
+      );
+      await storage.saveSessions(sessions);
+    }
+  }
+
   let baseFocus = sessions.get(currentBranch)?.focusSeconds ?? 0;
+
+  // ── Bug #1 — Track all local git branches ────────────────────────────────
+  let knownBranches: string[] = await resolver.allBranches();
 
   const activityAdapter = new ActivityAdapter(engine, resolver);
   activityAdapter.activate();
 
-  // Scope the sniffer to this workspace's Claude project directory only.
+  // ── Scope sniffers to this workspace's Claude project directory ───────────
   // Claude Code maps /path/to/workspace → ~/.claude/projects/-path-to-workspace/
   const claudeProjectDir = workspaceToClaudeProjectDir(workspaceRoot);
-  const snifferGlob = path.join(claudeProjectDir, '*.jsonl');
+  const snifferGlob        = path.join(claudeProjectDir, '*.jsonl');
+  const subagentSnifferGlob = path.join(claudeProjectDir, '*', 'subagents', '*.jsonl');
   outputChannel.appendLine(`[DevValue] Watching Claude logs: ${snifferGlob}`);
+  outputChannel.appendLine(`[DevValue] Watching subagent logs: ${subagentSnifferGlob}`);
 
-  const fileWatcher = new FileWatcherAdapter(
-    snifferGlob,
-    onUsage,
-    outputChannel,
-  );
+  const fileWatcher = new FileWatcherAdapter(snifferGlob, onUsage, outputChannel);
   fileWatcher.start();
+
+  // ── Bug #2 — Second sniffer for subagent JSONL files ─────────────────────
+  // Subagent files share message.id with parent progress records; the
+  // seenMessageIds dedup in onUsage prevents double-counting.
+  const subagentWatcher = new FileWatcherAdapter(subagentSnifferGlob, onUsage, outputChannel);
+  subagentWatcher.start();
 
   console.log('[DevValue] Creating StatusBarAdapter, enableStatusBar=', config.enableStatusBar);
   const statusBar = new StatusBarAdapter(config.enableStatusBar);
@@ -118,20 +156,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const breakdown = calc.sessionBreakdown(current);
     statusBar.update(currentBranch, breakdown);
 
-    DashboardPanel.currentPanel?.update({ sessions, currentBranch, config });
+    DashboardPanel.currentPanel?.update({ sessions, currentBranch, config, knownBranches });
 
     tickCount++;
     if (tickCount % 5 === 0) {
       await storage.saveSessions(sessions);
     }
+    // Refresh branch list every 30 s in case user checks out a new branch
+    if (tickCount % 30 === 0) {
+      knownBranches = await resolver.allBranches();
+    }
   }
 
   function onUsage(usage: TokenUsage): void {
+    // ── Dedup: UUID prevents re-counting the same JSONL record after restart ──
     if (usage.uuid) {
       if (seenUuids.has(usage.uuid)) { return; }
       seenUuids.add(usage.uuid);
     }
-    const branch = usage.branchName || currentBranch;
+    // ── Dedup: messageId prevents double-counting when a call appears in both
+    //    the parent session's progress records and a subagent JSONL file ───────
+    if (usage.messageId) {
+      if (seenMessageIds.has(usage.messageId)) { return; }
+      seenMessageIds.add(usage.messageId);
+    }
+
+    // ── Bug #3 — Map 'HEAD' gitBranch to the real current branch ─────────────
+    const branch = (usage.branchName && usage.branchName !== 'HEAD')
+      ? usage.branchName
+      : currentBranch;
+
     const session = getOrCreate(sessions, branch);
     session.tokenUsage.push(usage);
   }
@@ -147,7 +201,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     'devvalue.openDashboard',
     () => {
       DashboardPanel.createOrShow(
-        { sessions, currentBranch, config },
+        { sessions, currentBranch, config, knownBranches },
         (rate) => {
           void vscode.workspace.getConfiguration('devvalue')
             .update('hourlyRate', rate, vscode.ConfigurationTarget.Global);
@@ -172,6 +226,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     () => {
       engine.reset();
       fileWatcher.start();
+      subagentWatcher.start();
       vscode.window.showInformationMessage('DevValue: Tracking started.');
     },
   );
@@ -180,6 +235,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     'devvalue.stopTracking',
     () => {
       fileWatcher.dispose();
+      subagentWatcher.dispose();
       vscode.window.showInformationMessage('DevValue: Tracking stopped.');
     },
   );
@@ -230,6 +286,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     outputChannel,
     activityAdapter,
     fileWatcher,
+    subagentWatcher,
     statusBar,
     { dispose: () => clearInterval(tickHandle) },
     cmdDashboard,

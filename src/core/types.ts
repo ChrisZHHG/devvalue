@@ -28,11 +28,17 @@ export interface FlowState {
 export interface TokenUsage {
   /** JSONL record UUID — used for deduplication across restarts. */
   uuid?: string;
+  /** API message ID (`message.id`) — used for streaming frame deduplication. */
+  messageId?: string;
   /** Unix milliseconds */
   timestamp: number;
   model: string;
   inputTokens: number;
   outputTokens: number;
+  /** Cache-write (creation) tokens — `cache_creation_input_tokens`. */
+  cacheWriteTokens: number;
+  /** Cache-read tokens — `cache_read_input_tokens`. */
+  cacheReadTokens: number;
   costUsd: number;
   /** true = context compaction / summarisation — not a direct user turn */
   isBackground: boolean;

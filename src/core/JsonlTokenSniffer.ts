@@ -13,29 +13,57 @@ import { getPricing } from './modelPricing.js';
 const POLL_INTERVAL_MS = 10_000;
 
 /**
+ * Internal type: a fully parsed record before streaming-dedup is applied.
+ * `stopReason` is the raw `stop_reason` from the API response.
+ */
+interface ParsedRecord {
+  /** `message.id` from the API response — globally unique per API call. */
+  messageId: string;
+  /** null  = streaming partial frame (not yet billable)
+   *  other = final frame (billable, has correct output_tokens) */
+  stopReason: string | null;
+  usage: TokenUsage;
+}
+
+/**
  * Reads Claude Code's JSONL session logs and emits a `TokenUsage` event for
- * every `type: "assistant"` API call recorded.
+ * every unique API call.
+ *
+ * **Streaming dedup**: Claude Code writes multiple JSONL records per API call
+ * during response streaming.  Only the record with `stop_reason != null` carries
+ * the correct final `output_tokens`.  When no final frame is present (older
+ * sessions), the last partial frame is used instead.  All frames are keyed by
+ * `message.id`; only the best frame is emitted.
+ *
+ * **Subagent (Haiku) detection**: Tool-use subagent calls are logged both as
+ * `type:"assistant"` records in the subagent's own JSONL file and as
+ * `type:"progress"` records nested inside the parent session's JSONL.  Because
+ * both carry the same `message.id` they are naturally deduplicated.
  *
  * **Streaming**: files are read incrementally from a byte offset — full file
  * contents are never held in memory.
  *
- * **Tailing**: `fs.watch` is used to detect appends; a background poll finds
- * newly created log files (new sessions) every 10 s.
- *
- * **Background detection**: records where `isSidechain === true` are marked
- * `isBackground: true` in the emitted `TokenUsage`.
- *
- * Consumers should deduplicate emitted events by the JSONL record's `uuid`
- * field (available via the raw record) if they restart and replay files.
+ * **Tailing**: `fs.watch` detects appends; a background poll finds newly created
+ * log files every 10 s.
  */
 export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
   private readonly expandedGlob: string;
 
-  /** Last byte offset read per file — we only stream new bytes. */
+  /** Last byte offset read per file. */
   private readonly fileOffsets = new Map<string, number>();
 
   /** Active `fs.FSWatcher` per file. */
   private readonly watchers = new Map<string, fs.FSWatcher>();
+
+  /**
+   * Buffer of partial (stop_reason=null) frames, keyed by `message.id`.
+   *
+   * Invariant: an entry is present iff we have seen ≥1 partial frame for that
+   * message.id and no final frame yet.  When a final frame arrives the entry is
+   * deleted and the final frame is emitted immediately.  On `stop()` every
+   * remaining entry is flushed (old-format sessions that never emit a final frame).
+   */
+  private readonly pending = new Map<string, ParsedRecord>();
 
   private pollTimer?: NodeJS.Timeout;
   private running = false;
@@ -56,13 +84,19 @@ export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
     if (!this.running) {return;}
     this.running = false;
     clearInterval(this.pollTimer);
+
+    // Flush pending partial frames (old-format sessions with no final frame).
+    for (const rec of this.pending.values()) {
+      this.emit('usage', rec.usage);
+    }
+    this.pending.clear();
+
     for (const watcher of this.watchers.values()) {watcher.close();}
     this.watchers.clear();
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
-  /** Expand the glob, then catch up + watch any files not yet tracked. */
   private async scanAndWatch(): Promise<void> {
     let files: string[];
     try {
@@ -74,8 +108,6 @@ export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
 
     for (const file of files) {
       if (this.watchers.has(file)) {continue;}
-      // Catch up from byte 0 before installing the watcher so we don't miss
-      // lines that were written between the readdir and the watch call.
       await this.readNewLines(file);
       this.watchFile(file);
     }
@@ -94,8 +126,8 @@ export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
   }
 
   /**
-   * Stream-read any bytes appended since the last read.
-   * Uses readline so we process one line at a time without buffering the file.
+   * Stream-read any bytes appended since the last read, applying streaming
+   * deduplication via the `pending` buffer.
    */
   private async readNewLines(filePath: string): Promise<void> {
     const offset = this.fileOffsets.get(filePath) ?? 0;
@@ -104,10 +136,10 @@ export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
     try {
       stat = await fsp.stat(filePath);
     } catch {
-      return; // file disappeared
+      return;
     }
 
-    if (stat.size <= offset) {return;} // nothing new
+    if (stat.size <= offset) {return;}
 
     await new Promise<void>((resolve, reject) => {
       const stream = fs.createReadStream(filePath, {
@@ -120,8 +152,9 @@ export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
       rl.on('line', (line) => {
         const trimmed = line.trim();
         if (!trimmed) {return;}
-        const usage = this.parseLine(trimmed);
-        if (usage) {this.emit('usage', usage);}
+        const parsed = this.parseLine(trimmed);
+        if (!parsed) {return;}
+        this.ingestParsed(parsed);
       });
 
       rl.on('close', () => {
@@ -134,8 +167,37 @@ export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
     });
   }
 
-  /** Parse one JSONL line. Returns `TokenUsage` for assistant records, else null. */
-  private parseLine(line: string): TokenUsage | null {
+  /**
+   * Apply streaming deduplication logic:
+   *
+   * - Final frame (`stopReason != null`): emit immediately, discard any
+   *   buffered partial for the same message.
+   * - Partial frame (`stopReason == null`): store/replace in `pending`.
+   *   The last partial written before a final frame has the most complete
+   *   `output_tokens` value.
+   */
+  private ingestParsed(rec: ParsedRecord): void {
+    if (rec.stopReason !== null) {
+      // Final billable frame — emit and clear any buffered partial.
+      this.pending.delete(rec.messageId);
+      this.emit('usage', rec.usage);
+    } else {
+      // Partial frame — replace with newest (accumulates output_tokens).
+      this.pending.set(rec.messageId, rec);
+    }
+  }
+
+  /**
+   * Parse one JSONL line.
+   *
+   * Handles two record types:
+   *   1. `type:"assistant"` — direct assistant records (Sonnet main session).
+   *   2. `type:"progress"` — subagent API calls mirrored into the parent
+   *      session as nested progress events (`data.message.message`).
+   *
+   * Returns `null` for records that have no token usage.
+   */
+  private parseLine(line: string): ParsedRecord | null {
     let record: unknown;
     try {
       record = JSON.parse(line);
@@ -144,13 +206,33 @@ export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
     }
 
     if (!isObj(record)) {return null;}
-    if (record['type'] !== 'assistant') {return null;}
 
+    const recordType = record['type'];
+
+    if (recordType === 'assistant') {
+      return this.parseAssistantRecord(record);
+    }
+
+    if (recordType === 'progress') {
+      return this.parseProgressRecord(record);
+    }
+
+    return null;
+  }
+
+  /** Parse a `type:"assistant"` record. */
+  private parseAssistantRecord(record: Record<string, unknown>): ParsedRecord | null {
     const message = record['message'];
     if (!isObj(message)) {return null;}
 
     const usage = message['usage'];
     if (!isObj(usage)) {return null;}
+
+    const messageId = typeof message['id'] === 'string' ? message['id'] : null;
+    if (!messageId) {return null;}
+
+    const stopReason =
+      typeof message['stop_reason'] === 'string' ? message['stop_reason'] : null;
 
     const model =
       typeof message['model'] === 'string' ? message['model'] : 'unknown';
@@ -158,6 +240,73 @@ export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
     const rawTs = record['timestamp'];
     const timestamp =
       typeof rawTs === 'string' ? new Date(rawTs).getTime() : Date.now();
+
+    return this.buildRecord({
+      record,
+      message,
+      messageId,
+      stopReason,
+      model,
+      timestamp,
+      usage,
+    });
+  }
+
+  /**
+   * Parse a `type:"progress"` record.
+   *
+   * Structure: `{ data: { message: { type:"assistant", message: { id, model,
+   *   usage, stop_reason } } } }`.
+   *
+   * These are subagent calls (e.g. Haiku) mirrored into the parent session.
+   */
+  private parseProgressRecord(record: Record<string, unknown>): ParsedRecord | null {
+    const data = record['data'];
+    if (!isObj(data)) {return null;}
+
+    const outerMsg = data['message'];
+    if (!isObj(outerMsg)) {return null;}
+
+    const innerMsg = outerMsg['message'];
+    if (!isObj(innerMsg)) {return null;}
+
+    const usage = innerMsg['usage'];
+    if (!isObj(usage)) {return null;}
+
+    const messageId = typeof innerMsg['id'] === 'string' ? innerMsg['id'] : null;
+    if (!messageId) {return null;}
+
+    const stopReason =
+      typeof innerMsg['stop_reason'] === 'string' ? innerMsg['stop_reason'] : null;
+
+    const model =
+      typeof innerMsg['model'] === 'string' ? innerMsg['model'] : 'unknown';
+
+    const rawTs = record['timestamp'];
+    const timestamp =
+      typeof rawTs === 'string' ? new Date(rawTs).getTime() : Date.now();
+
+    return this.buildRecord({
+      record,
+      message: innerMsg,
+      messageId,
+      stopReason,
+      model,
+      timestamp,
+      usage,
+    });
+  }
+
+  private buildRecord(opts: {
+    record: Record<string, unknown>;
+    message: Record<string, unknown>;
+    messageId: string;
+    stopReason: string | null;
+    model: string;
+    timestamp: number;
+    usage: Record<string, unknown>;
+  }): ParsedRecord {
+    const { record, messageId, stopReason, model, timestamp, usage } = opts;
 
     const inputTokens      = toInt(usage['input_tokens']);
     const outputTokens     = toInt(usage['output_tokens']);
@@ -171,19 +320,22 @@ export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
        cacheWriteTokens * pricing.cacheWritePer1M +
        cacheReadTokens  * pricing.cacheReadPer1M) / 1_000_000;
 
-    return {
-      uuid: typeof record['uuid'] === 'string' ? record['uuid'] : undefined,
+    const tokenUsage: TokenUsage = {
+      uuid:            typeof record['uuid'] === 'string' ? record['uuid'] : undefined,
+      messageId,
       timestamp,
       model,
       inputTokens,
       outputTokens,
+      cacheWriteTokens,
+      cacheReadTokens,
       costUsd,
-      isBackground: record['isSidechain'] === true,
-      sessionId:
-        typeof record['sessionId'] === 'string' ? record['sessionId'] : '',
-      branchName:
-        typeof record['gitBranch'] === 'string' ? record['gitBranch'] : '',
+      isBackground:    record['isSidechain'] === true,
+      sessionId:       typeof record['sessionId'] === 'string' ? record['sessionId'] : '',
+      branchName:      typeof record['gitBranch'] === 'string' ? record['gitBranch'] : '',
     };
+
+    return { messageId, stopReason, usage: tokenUsage };
   }
 }
 
@@ -191,20 +343,10 @@ export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
 
 /**
  * Expand a glob pattern containing `*` wildcards into a list of real file paths.
- *
- * Algorithm:
- *   Split `pattern` on `*` to get literal segments `segs`.
- *   Recurse: at each wildcard, `readdir` the directory formed by the accumulated
- *   path, iterate over entries, and recurse with the next segment appended.
- *   At the *last* wildcard, filter directory entries whose names end with
- *   `segs[last]` (the file-extension suffix, e.g. `".jsonl"`).
- *
- * Works with any number of `*` wildcards. Missing directories return `[]`.
  */
 async function expandGlob(pattern: string): Promise<string[]> {
   const segs = pattern.split('*');
   if (segs.length === 1) {
-    // No wildcard — check if the literal path exists.
     try {
       await fsp.access(pattern);
       return [pattern];
@@ -233,15 +375,12 @@ async function expandSegments(
   const results: string[] = [];
 
   if (isLastWildcard) {
-    // segs[last] is the filename suffix (e.g. ".jsonl").
-    // Keep only entries whose name ends with that suffix.
     const suffix = segs[segs.length - 1];
     for (const entry of entries) {
       if (!entry.name.endsWith(suffix)) {continue;}
       results.push(path.join(prefix, entry.name));
     }
   } else {
-    // More wildcards remain. Each entry expands the current `*`.
     for (const entry of entries) {
       const nested = await expandSegments(
         segs,

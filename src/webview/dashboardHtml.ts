@@ -62,14 +62,42 @@ export function getDashboardHtml(nonce: string): string {
     /* ── Layout ──────────────────────────────────────────────── */
     .content { display: flex; flex: 1; overflow: hidden; }
 
-    /* ── Branch sidebar ──────────────────────────────────────── */
+    /* ── Sidebar ─────────────────────────────────────────────── */
     .branch-list {
       width: 190px;
       flex-shrink: 0;
       overflow-y: auto;
       background: var(--vscode-sideBar-background, #252526);
       border-right: 1px solid var(--vscode-widget-border, #454545);
+      display: flex;
+      flex-direction: column;
     }
+
+    /* ── View tabs (Branches / Days) ─────────────────────────── */
+    .view-tabs {
+      display: flex;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--vscode-widget-border, #454545);
+    }
+    .view-tab {
+      flex: 1; padding: 6px 4px;
+      border: none; border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      cursor: pointer; font-size: 10px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+      background: transparent;
+      color: var(--vscode-editor-foreground, #ccc);
+      opacity: 0.5; font-family: inherit;
+    }
+    .view-tab.active {
+      opacity: 1;
+      color: var(--vscode-focusBorder, #007acc);
+      border-bottom-color: var(--vscode-focusBorder, #007acc);
+    }
+    .view-tab:hover:not(.active) { opacity: 0.75; }
+
+    .sidebar-scroll { overflow-y: auto; flex: 1; }
+
     .branch-list-hdr {
       padding: 8px 12px 5px;
       font-size: 10px; font-weight: 700;
@@ -168,6 +196,27 @@ export function getDashboardHtml(nonce: string): string {
       width: 68px; text-align: right;
       font-size: 12px; font-variant-numeric: tabular-nums;
     }
+
+    /* ── Day detail: branch breakdown rows ───────────────────── */
+    .day-branch-row {
+      display: flex; align-items: center;
+      gap: 10px; margin-bottom: 7px;
+    }
+    .day-branch-name {
+      width: 150px; font-size: 12px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* ── Daily activity table (inside branch detail) ─────────── */
+    .day-table { width: 100%; }
+    .day-row {
+      display: flex; justify-content: space-between;
+      font-size: 12px; padding: 5px 0;
+      border-bottom: 1px solid var(--vscode-widget-border, #454545);
+    }
+    .day-row-date { opacity: 0.75; }
+    .day-row-cost { font-variant-numeric: tabular-nums; font-weight: 600; }
 
     /* ── Token rows ──────────────────────────────────────────── */
     .token-grid {
@@ -306,6 +355,8 @@ export function getDashboardHtml(nonce: string): string {
     var config         = { hourlyRate: 75 };
     var selectedBranch = '';
     var resetPending   = false;
+    var sidebarView    = 'branches';  // 'branches' | 'days'
+    var selectedDay    = '';          // ISO date string e.g. '2026-02-28'
 
     // ── Formatters ───────────────────────────────────────────
     function fmtCost(n) {
@@ -336,6 +387,14 @@ export function getDashboardHtml(nonce: string): string {
         .replace(/"/g, '&quot;');
     }
 
+    var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    /** Format an ISO date string ('2026-02-28') as 'Feb 28'. */
+    function fmtDate(iso) {
+      var p = iso.split('-');
+      return MONTHS[parseInt(p[1]) - 1] + ' ' + parseInt(p[2]);
+    }
+
     // ── Derived ──────────────────────────────────────────────
     function allTotals() {
       return sessions.reduce(function (a, s) {
@@ -360,6 +419,45 @@ export function getDashboardHtml(nonce: string): string {
         r.models[m] = (r.models[m] || 0) + t.costUsd;
       }
       return r;
+    }
+
+    /**
+     * Compute per-UTC-day costs grouped by branch, across all sessions.
+     * Costs are attributed using the session's branchName (the final attributed
+     * branch), not the per-usage gitBranch field, for consistency with the rest
+     * of the dashboard.
+     *
+     * Returns an array sorted newest-first:
+     *   [{ date: '2026-02-28', total: 7.49,
+     *      branches: [{ branch: 'master', cost: 6.54 }, ...] }, ...]
+     */
+    function computeDailyByBranch() {
+      var byDay = {};
+      for (var si = 0; si < sessions.length; si++) {
+        var sess    = sessions[si];
+        var branch  = sess.branchName;
+        var usages  = sess.tokenUsage;
+        for (var ti = 0; ti < usages.length; ti++) {
+          var t = usages[ti];
+          if (!t.timestamp) { continue; }
+          var d   = new Date(t.timestamp);
+          var key = d.getUTCFullYear() + '-' +
+                    String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+                    String(d.getUTCDate()).padStart(2, '0');
+          if (!byDay[key]) { byDay[key] = {}; }
+          byDay[key][branch] = (byDay[key][branch] || 0) + t.costUsd;
+        }
+      }
+      return Object.keys(byDay).sort().reverse().map(function (date) {
+        var branchMap = byDay[date];
+        var total = Object.keys(branchMap).reduce(function (s, k) {
+          return s + branchMap[k];
+        }, 0);
+        var branches = Object.keys(branchMap)
+          .map(function (b) { return { branch: b, cost: branchMap[b] }; })
+          .sort(function (a, b) { return b.cost - a.cost; });
+        return { date: date, total: total, branches: branches };
+      });
     }
 
     // ── Build HTML fragments ─────────────────────────────────
@@ -394,6 +492,17 @@ export function getDashboardHtml(nonce: string): string {
         '</div>';
     }
 
+    /** Bar row with a wide branch-name label (for day detail). */
+    function mkDayBranchRow(branch, pctStr, costStr) {
+      return '<div class="day-branch-row">' +
+        '<span class="day-branch-name" title="' + esc(branch) + '">' + esc(branch) + '</span>' +
+        '<div class="bdown-track">' +
+          '<div class="bdown-fill ai" style="width:' + pctStr + '%"></div>' +
+        '</div>' +
+        '<span class="bdown-val">' + esc(costStr) + '</span>' +
+        '</div>';
+    }
+
     // ── Render sections ──────────────────────────────────────
     function renderSummary() {
       if (!sessions.length) {
@@ -407,7 +516,16 @@ export function getDashboardHtml(nonce: string): string {
         mkMetric('Branches', String(sessions.length), '');
     }
 
-    function renderBranches() {
+    function renderTabs() {
+      return '<div class="view-tabs">' +
+        '<button class="view-tab' + (sidebarView === 'branches' ? ' active' : '') + '"' +
+          ' data-action="tab-branches">Branches</button>' +
+        '<button class="view-tab' + (sidebarView === 'days' ? ' active' : '') + '"' +
+          ' data-action="tab-days">By Day</button>' +
+        '</div>';
+    }
+
+    function renderBranchList() {
       if (!sessions.length) {
         return '<div class="branch-empty">No branches tracked yet</div>';
       }
@@ -428,7 +546,69 @@ export function getDashboardHtml(nonce: string): string {
       return hdr + items.join('');
     }
 
+    function renderDayList() {
+      var days = computeDailyByBranch();
+      if (!days.length) {
+        return '<div class="branch-empty">No daily data yet</div>';
+      }
+      var hdr = '<div class="branch-list-hdr">UTC Calendar Days</div>';
+      var items = days.map(function (d) {
+        var isSelected = d.date === selectedDay;
+        return '<div class="branch-item' + (isSelected ? ' selected' : '') + '"' +
+          ' data-action="select-day" data-day="' + esc(d.date) + '">' +
+          '<div class="b-spacer"></div>' +
+          '<span class="b-name">' + esc(fmtDate(d.date)) + '</span>' +
+          '<span class="b-cost">' + fmtCost(d.total) + '</span>' +
+          '</div>';
+      });
+      return hdr + items.join('');
+    }
+
+    function renderBranches() {
+      var list = sidebarView === 'days' ? renderDayList() : renderBranchList();
+      return renderTabs() + '<div class="sidebar-scroll">' + list + '</div>';
+    }
+
+    function renderDayDetail() {
+      var days = computeDailyByBranch();
+      var dayData = null;
+      for (var i = 0; i < days.length; i++) {
+        if (days[i].date === selectedDay) { dayData = days[i]; break; }
+      }
+      if (!dayData) {
+        return '<div class="empty-detail">Select a day to see its breakdown</div>';
+      }
+
+      var p = selectedDay.split('-');
+      var fullLabel = MONTHS[parseInt(p[1]) - 1] + ' ' + parseInt(p[2]) + ', ' + p[0];
+
+      var html = '<div class="detail-head">' +
+        '<span class="detail-branch">' + esc(fullLabel) + '</span>' +
+        '</div>';
+
+      html += '<div class="stat-grid">' +
+        mkStatCard('Total AI Cost', fmtCost(dayData.total)) +
+        mkStatCard('Branches', String(dayData.branches.length)) +
+        mkStatCard('Largest', fmtCost(dayData.branches[0] ? dayData.branches[0].cost : 0)) +
+        '</div>';
+
+      html += '<div class="section"><div class="section-hdr">Cost by Branch</div>';
+      dayData.branches.forEach(function (entry) {
+        var pct = dayData.total > 0
+          ? (entry.cost / dayData.total * 100).toFixed(1)
+          : '0.0';
+        html += mkDayBranchRow(entry.branch, pct, fmtCost(entry.cost));
+      });
+      html += '</div>';
+
+      return html;
+    }
+
     function renderDetail() {
+      if (sidebarView === 'days') {
+        return renderDayDetail();
+      }
+
       var sess = null;
       for (var i = 0; i < sessions.length; i++) {
         if (sessions[i].branchName === selectedBranch) {
@@ -491,6 +671,27 @@ export function getDashboardHtml(nonce: string): string {
       }
       html += '</div>';
 
+      // Daily activity for this branch
+      var allDays = computeDailyByBranch();
+      var branchDays = allDays.filter(function (d) {
+        return d.branches.some(function (e) { return e.branch === sess.branchName; });
+      });
+      if (branchDays.length > 0) {
+        html += '<div class="section"><div class="section-hdr">Daily Activity</div>';
+        html += '<div class="day-table">';
+        branchDays.forEach(function (d) {
+          var dayCost = 0;
+          d.branches.forEach(function (e) {
+            if (e.branch === sess.branchName) { dayCost = e.cost; }
+          });
+          html += '<div class="day-row">' +
+            '<span class="day-row-date">' + esc(fmtDate(d.date)) + '</span>' +
+            '<span class="day-row-cost">' + fmtCost(dayCost) + '</span>' +
+            '</div>';
+        });
+        html += '</div></div>';
+      }
+
       // Actions
       if (resetPending) {
         html += '<div class="actions">' +
@@ -536,6 +737,27 @@ export function getDashboardHtml(nonce: string): string {
           resetPending = false;
           render();
         }
+      } else if (action === 'tab-branches') {
+        if (sidebarView !== 'branches') {
+          sidebarView = 'branches';
+          render();
+        }
+      } else if (action === 'tab-days') {
+        if (sidebarView !== 'days') {
+          sidebarView = 'days';
+          // Auto-select the most recent day if none selected yet
+          if (!selectedDay) {
+            var days = computeDailyByBranch();
+            if (days.length > 0) { selectedDay = days[0].date; }
+          }
+          render();
+        }
+      } else if (action === 'select-day') {
+        var day = el.dataset.day;
+        if (selectedDay !== day) {
+          selectedDay = day;
+          render();
+        }
       } else if (action === 'reset-ask') {
         resetPending = true;
         render();
@@ -558,7 +780,7 @@ export function getDashboardHtml(nonce: string): string {
       currentBranch = msg.currentBranch;
       config        = msg.config;
 
-      // Keep selection valid; fall back to current branch
+      // Keep branch selection valid; fall back to current branch
       var stillValid = false;
       for (var i = 0; i < sessions.length; i++) {
         if (sessions[i].branchName === prev) { stillValid = true; break; }
@@ -566,6 +788,12 @@ export function getDashboardHtml(nonce: string): string {
       if (!stillValid) {
         selectedBranch = currentBranch;
         resetPending   = false;
+      }
+
+      // Auto-select most recent day whenever we're in days view with no selection
+      if (sidebarView === 'days' && !selectedDay) {
+        var days = computeDailyByBranch();
+        if (days.length > 0) { selectedDay = days[0].date; }
       }
 
       // Sync rate input only when not focused (avoid clobbering user input)

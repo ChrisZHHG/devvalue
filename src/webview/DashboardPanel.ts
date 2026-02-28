@@ -8,6 +8,8 @@ export interface DashboardState {
   sessions: Map<string, Session>;
   currentBranch: string;
   config: DevValueConfig;
+  /** All local git branches — branches missing from sessions are shown with $0. */
+  knownBranches: string[];
 }
 
 function getNonce(): string {
@@ -99,10 +101,31 @@ export class DashboardPanel implements vscode.Disposable {
 
   private _send(state: DashboardState): void {
     const calc = new CostCalculator(state.config.hourlyRate);
-    const sessions = Array.from(state.sessions.values()).map((s) => ({
+
+    // Build the full session list: real sessions + zero-data placeholders for
+    // any known branch that has no recorded data yet.  'HEAD' is never shown
+    // directly — it is resolved to a real branch on activation.
+    const allSessions = new Map(state.sessions);
+    for (const branch of state.knownBranches) {
+      if (branch === 'HEAD') { continue; }
+      if (!allSessions.has(branch)) {
+        allSessions.set(branch, {
+          id: `${branch}-placeholder`,
+          branchName: branch,
+          startTime: 0,
+          focusSeconds: 0,
+          tokenUsage: [],
+        });
+      }
+    }
+
+    // Bug #2 — include background (sidechain / subagent) costs so the total
+    // matches Anthropic billing as closely as possible.
+    const sessions = Array.from(allSessions.values()).map((s) => ({
       ...s,
-      breakdown: calc.sessionBreakdown(s),
+      breakdown: calc.sessionBreakdown(s, /* includeBackground */ true),
     }));
+
     void this._panel.webview.postMessage({
       type: 'update',
       sessions,

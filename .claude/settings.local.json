@@ -9,7 +9,11 @@
       "Bash(cd \"/Users/chriszhang/Desktop/Devcost Tracker/devvalue\" && pnpm run check-types 2>&1 && pnpm run lint 2>&1)",
       "Bash(cd \"/Users/chriszhang/Desktop/Devcost Tracker/devvalue\" && pnpm exec eslint src --fix 2>&1)",
       "Bash(cd \"/Users/chriszhang/Desktop/Devcost Tracker/devvalue\" && pnpm run compile 2>&1)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(echo === $f ===:*)",
+      "Bash(python3:*)",
+      "Bash(node:*)"
     ]
   }
 }
