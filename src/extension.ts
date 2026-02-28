@@ -63,12 +63,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const storage = new StorageAdapter(context.globalState);
   const sessions = storage.loadSessions();
 
-  // Build seen-UUID set from persisted sessions so we skip records that were
+  // Build seen-key set from persisted sessions so we skip records that were
   // already counted in a previous run (restart deduplication).
+  // Key = messageId (stable across streaming chunks) when available, else uuid.
   const seenUuids = new Set<string>();
   for (const session of sessions.values()) {
     for (const u of session.tokenUsage) {
-      if (u.uuid) { seenUuids.add(u.uuid); }
+      const key = u.messageId ?? u.uuid;
+      if (key) { seenUuids.add(key); }
     }
   }
 
@@ -127,9 +129,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   function onUsage(usage: TokenUsage): void {
-    if (usage.uuid) {
-      if (seenUuids.has(usage.uuid)) { return; }
-      seenUuids.add(usage.uuid);
+    const dedupKey = usage.messageId ?? usage.uuid;
+    if (dedupKey) {
+      if (seenUuids.has(dedupKey)) { return; }
+      seenUuids.add(dedupKey);
     }
     const branch = usage.branchName || currentBranch;
     const session = getOrCreate(sessions, branch);

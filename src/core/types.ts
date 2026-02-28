@@ -28,6 +28,12 @@ export interface FlowState {
 export interface TokenUsage {
   /** JSONL record UUID — used for deduplication across restarts. */
   uuid?: string;
+  /**
+   * Anthropic message ID (e.g. "msg_01FRwJt...") — shared by all streaming
+   * chunks of the same API call. Use this as the primary dedup key; fall back
+   * to `uuid` for older records that pre-date this field.
+   */
+  messageId?: string;
   /** Unix milliseconds */
   timestamp: number;
   model: string;

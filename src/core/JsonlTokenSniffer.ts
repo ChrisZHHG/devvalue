@@ -34,6 +34,14 @@ export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
   /** Last byte offset read per file — we only stream new bytes. */
   private readonly fileOffsets = new Map<string, number>();
 
+  /**
+   * Guards against the rare edge case where two "final" records (stop_reason
+   * != null) appear for the same message.id in a single run.  The primary
+   * protection against streaming duplicates is skipping null-stop_reason
+   * records in parseLine(); this set is a defensive second layer.
+   */
+  private readonly seenMessageIds = new Set<string>();
+
   /** Active `fs.FSWatcher` per file. */
   private readonly watchers = new Map<string, fs.FSWatcher>();
 
@@ -149,6 +157,13 @@ export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
     const message = record['message'];
     if (!isObj(message)) {return null;}
 
+    // Skip streaming intermediate frames — only the final record (stop_reason
+    // != null) has complete output_tokens and should be counted.  Both the
+    // intermediate and final records carry identical input/cache token counts,
+    // so processing both would double-count those costs.
+    const stopReason = message['stop_reason'];
+    if (stopReason === null) {return null;}
+
     const usage = message['usage'];
     if (!isObj(usage)) {return null;}
 
@@ -171,8 +186,16 @@ export class JsonlTokenSniffer extends EventEmitter implements ITokenSniffer {
        cacheWriteTokens * pricing.cacheWritePer1M +
        cacheReadTokens  * pricing.cacheReadPer1M) / 1_000_000;
 
+    const messageId =
+      typeof message['id'] === 'string' ? message['id'] : undefined;
+
+    // Sniffer-level dedup: skip if we already emitted this message.id.
+    if (messageId && this.seenMessageIds.has(messageId)) {return null;}
+    if (messageId) {this.seenMessageIds.add(messageId);}
+
     return {
       uuid: typeof record['uuid'] === 'string' ? record['uuid'] : undefined,
+      messageId,
       timestamp,
       model,
       inputTokens,
