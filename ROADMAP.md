@@ -97,6 +97,7 @@ Distribution (multiple frontends):
 - [ ] Enterprise/Education account detection
 - [ ] Handle Haiku hidden background calls (not in local logs)
 - [ ] Verify: DevValue shows ~1.54x actual bill for edu accounts (expected, documented)
+- [ ] **Merged branch cost archival** — snapshot branch cost at merge time and store as immutable record; dashboard shows merged branches in a separate "Archived" section so feature costs survive the merge into master
 
 ---
 
@@ -149,6 +150,7 @@ Distribution (multiple frontends):
 - [ ] Haiku background calls not in local JSONL logs (Claude Code limitation)
 - [ ] Pricing ~1.54x for Education/Enterprise accounts (uses published rates, documented)
 - [ ] Ambrosia branch remnants in globalState cache after first install
+- [ ] **Merged branch cost loss** — when a branch is merged into master, its cost is absorbed into master's total; the per-feature cost record is not preserved. Intended behavior: merged branches should be archived with a "merged" snapshot so cost history survives the merge.
 
 ---
 
