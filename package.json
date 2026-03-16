@@ -1,9 +1,21 @@
 {
   "name": "devvalue",
   "publisher": "ChrisZhang",
-  "displayName": "devvalue",
-  "description": "Measure the true cost of AI-era software engineering — human cognition + AI compute, per feature.",
-  "version": "0.0.7",
+  "displayName": "DevValue",
+  "description": "Measure the true cost of AI-era software engineering — human focus time × hourly rate + AI token cost, tracked per git branch.",
+  "version": "0.0.8",
+  "icon": "icon.png",
+  "license": "MIT",
+  "keywords": [
+    "cost-tracking",
+    "ai",
+    "token",
+    "claude",
+    "pricing",
+    "git",
+    "developer-tools",
+    "productivity"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/ChrisZhang/devvalue.git"
