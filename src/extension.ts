@@ -50,7 +50,6 @@ function getOrCreate(sessions: Map<string, Session>, branch: string): Session {
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  console.log('[DevValue] activate() called');
   let config = readConfig();
 
   const outputChannel = vscode.window.createOutputChannel('DevValue');
@@ -130,18 +129,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const subagentWatcher = new FileWatcherAdapter(subagentSnifferGlob, onUsage, outputChannel);
   subagentWatcher.start();
 
-  console.log('[DevValue] Creating StatusBarAdapter, enableStatusBar=', config.enableStatusBar);
   const statusBar = new StatusBarAdapter(config.enableStatusBar);
-  console.log('[DevValue] StatusBarAdapter created');
 
   // Show initial state immediately — don't wait for the first tick.
   statusBar.update(currentBranch, calc.sessionBreakdown(getOrCreate(sessions, currentBranch)));
-  console.log('[DevValue] Initial statusBar.update() called, branch=', currentBranch);
 
   let tickCount = 0;
 
   async function tick(): Promise<void> {
-    console.log('[DevValue] tick fired, currentBranch=', currentBranch);
     const newBranch = await resolver.currentBranch();
     if (newBranch !== currentBranch) {
       const old = getOrCreate(sessions, currentBranch);
@@ -267,9 +262,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         2,
       );
       const exportPath = path.join(folder, '.devvalue-export.json');
-      await fs.writeFile(exportPath, exportData, 'utf8');
-      const doc = await vscode.workspace.openTextDocument(exportPath);
-      await vscode.window.showTextDocument(doc);
+      try {
+        await fs.writeFile(exportPath, exportData, 'utf8');
+        const doc = await vscode.workspace.openTextDocument(exportPath);
+        await vscode.window.showTextDocument(doc);
+      } catch (err) {
+        vscode.window.showErrorMessage(
+          `DevValue: Export failed — ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     },
   );
 
