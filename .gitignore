@@ -3,3 +3,6 @@ dist
 node_modules
 .vscode-test/
 *.vsix
+.devvalue-export.json
+.DS_Store
+*.pptx
