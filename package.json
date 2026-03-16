@@ -79,7 +79,7 @@
         "devvalue.claudeLogGlob": {
           "type": "string",
           "default": "~/.claude/projects/*/*.jsonl",
-          "description": "Glob for Claude Code session logs."
+          "description": "Override glob for Claude Code session logs (workspace auto-detection is used by default)."
         },
         "devvalue.enableStatusBar": {
           "type": "boolean",

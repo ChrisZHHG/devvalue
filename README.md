@@ -43,7 +43,7 @@ Total Cost = (Focus Time × Hourly Rate) + AI Token Cost
 | `devvalue.hourlyRate` | `75` | Your hourly rate in USD |
 | `devvalue.maxIdleTimeout` | `300` | Seconds before marking you as idle |
 | `devvalue.flowThreshold` | `3` | Activity events/min to trigger flow mode |
-| `devvalue.claudeLogGlob` | `~/.claude/projects/*/*.jsonl` | Path glob for Claude Code logs |
+| `devvalue.claudeLogGlob` | `~/.claude/projects/*/*.jsonl` | Optional override for Claude log path glob (uses workspace auto-detection by default) |
 | `devvalue.enableStatusBar` | `true` | Show/hide the status bar item |
 
 ---
@@ -51,7 +51,8 @@ Total Cost = (Focus Time × Hourly Rate) + AI Token Cost
 ## Commands
 
 - `DevValue: Open Dashboard` — view per-branch cost breakdown
-- `DevValue: Start / Stop Tracking` — manually control the timer
+- `DevValue: Start Tracking` — manually start tracking
+- `DevValue: Stop Tracking` — manually stop tracking
 - `DevValue: Reset Branch Data` — clear current branch's records
 - `DevValue: Export Data` — export all session data as JSON
 

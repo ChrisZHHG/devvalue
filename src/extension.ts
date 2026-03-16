@@ -36,6 +36,12 @@ function workspaceToClaudeProjectDir(workspaceRoot: string): string {
   return path.join(os.homedir(), '.claude', 'projects', encoded);
 }
 
+function expandHome(inputPath: string): string {
+  return inputPath.startsWith('~/')
+    ? path.join(os.homedir(), inputPath.slice(2))
+    : inputPath;
+}
+
 function getOrCreate(sessions: Map<string, Session>, branch: string): Session {
   if (!sessions.has(branch)) {
     sessions.set(branch, {
@@ -114,8 +120,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // ── Scope sniffers to this workspace's Claude project directory ───────────
   // Claude Code maps /path/to/workspace → ~/.claude/projects/-path-to-workspace/
+  // `devvalue.claudeLogGlob` acts as an explicit override when customized.
+  const defaultClaudeGlob = '~/.claude/projects/*/*.jsonl';
   const claudeProjectDir = workspaceToClaudeProjectDir(workspaceRoot);
-  const snifferGlob        = path.join(claudeProjectDir, '*.jsonl');
+  const snifferGlob = config.claudeLogGlob === defaultClaudeGlob
+    ? path.join(claudeProjectDir, '*.jsonl')
+    : expandHome(config.claudeLogGlob);
   const subagentSnifferGlob = path.join(claudeProjectDir, '*', 'subagents', '*.jsonl');
   outputChannel.appendLine(`[DevValue] Watching Claude logs: ${snifferGlob}`);
   outputChannel.appendLine(`[DevValue] Watching subagent logs: ${subagentSnifferGlob}`);
