@@ -4,7 +4,7 @@
   "displayName": "DevValue",
   "description": "Measure the true cost of AI-era software engineering — human focus time × hourly rate + AI token cost, tracked per git branch.",
   "version": "0.0.8",
-  "icon": "icon.png",
+  "icon": "icon.jpeg",
   "license": "MIT",
   "keywords": [
     "cost-tracking",
