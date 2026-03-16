@@ -44,8 +44,8 @@ Data Sources (any combination):
           │
           ▼
 Distribution (multiple frontends):
-├── VS Code extension (v0.0.1 ✅ shipped)
-├── CLI tool (`devvalue report`) ← NEXT PRIORITY
+├── VS Code extension (v0.0.8 ✅ shipped)
+├── CLI tool (`devvalue report`) ← planned
 ├── JetBrains plugin
 ├── Web dashboard (standalone SaaS)
 ├── MCP Server (AI agents query budgets)
@@ -54,7 +54,7 @@ Distribution (multiple frontends):
 
 ---
 
-## v0.0.1 ✅ SHIPPED (Built in 1 afternoon, $6.74)
+## v0.0.8 ✅ SHIPPED (MVP — built in 1 afternoon, $6.74)
 - [x] PTA Flow Detection — intelligent idle timeout
 - [x] Claude Code JSONL token sniffing with real pricing
 - [x] Branch binding — cost per git branch
@@ -62,19 +62,11 @@ Distribution (multiple frontends):
 - [x] Workspace-scoped project filtering
 - [x] UUID deduplication on restart
 - [x] Published to VS Code Marketplace (ChrisZhang.devvalue)
-- [x] GitHub: github.com/ChrisZHHG/devvalue
+- [x] GitHub: github.com/ChrisZhang/devvalue
 
 ---
 
-## v0.0.2 — CLI Tool + Multi-AI Support (CURRENT PRIORITY)
-
-### CLI Tool (HIGH — unlocks terminal-first users)
-- [ ] `devvalue report` — show cost summary in terminal
-- [ ] `devvalue report --branch main` — filter by branch
-- [ ] `devvalue report --json` — machine-readable output
-- [ ] `devvalue watch` — live cost display (like `htop` for AI costs)
-- [ ] Install via `npm install -g devvalue` / `brew install devvalue`
-- [ ] Reuses entire core/ layer, only new CLI adapter needed
+## v0.1.0 — Multi-AI Support (NEXT PRIORITY)
 
 ### Multi-AI Tool Sniffers (HIGH — core differentiator)
 - [ ] Cursor — investigate ~/.cursor/ logs
@@ -91,7 +83,7 @@ Distribution (multiple frontends):
 
 ---
 
-## v0.0.3 — Pricing Accuracy & Calibration
+## v0.1.1 — Pricing Accuracy & Calibration
 
 - [ ] "Calibrate" button — input actual bill → auto-calculate discount multiplier
 - [ ] Enterprise/Education account detection
@@ -101,7 +93,7 @@ Distribution (multiple frontends):
 
 ---
 
-## v0.0.4 — Markup & Quoting Engine (THE DIFFERENTIATOR)
+## v0.2.0 — Markup & Quoting Engine (THE DIFFERENTIATOR)
 
 - [ ] Markup calculator — set % per client/project (2x, 3x)
 - [ ] "Feature X cost $45 → at 2.5x markup → quote $112.50"
@@ -112,7 +104,7 @@ Distribution (multiple frontends):
 
 ---
 
-## v0.0.5 — Historical Intelligence & Benchmarking
+## v0.2.1 — Historical Intelligence & Benchmarking
 
 - [ ] "Similar features cost $X on average" — learn from your history
 - [ ] Time-series: cost per feature over time (getting more efficient?)
@@ -122,7 +114,7 @@ Distribution (multiple frontends):
 
 ---
 
-## v0.1.0 — MCP Server & Budget Enforcement (THE MOAT)
+## v0.3.0 — MCP Server & Budget Enforcement (THE MOAT)
 
 - [ ] DevValue as MCP Server — agents query in real-time:
   - "What's my remaining budget for this branch?"
@@ -134,7 +126,7 @@ Distribution (multiple frontends):
 
 ---
 
-## v0.2.0 — Team & Enterprise
+## v0.4.0 — Team & Enterprise
 
 - [ ] Team dashboard: manager sees cost per engineer per feature per sprint
 - [ ] Budget allocation and tracking per department
