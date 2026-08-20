@@ -192,8 +192,9 @@ engagement。标题里的一个词只是提示，而提示会撞车：同一个 
 pnpm install
 pnpm run test:core          # 18 个核心引擎测试，无需 VS Code
 pnpm run demo:timesheet     # 跑真引擎，重新生成 prototype 数据
-open prototype/timesheet/index.html
+open prototype/timesheet/index.html      # 看图就懂的叙事页
+open prototype/timesheet/dashboard.html  # 完整草稿 + 证据链
 ```
 
-`prototype/timesheet/standalone.html` 是把数据和脚本内联后的单文件版本，
-可以直接丢到任何静态托管或个人网站上。
+`prototype/timesheet/standalone/` 是把数据和脚本内联后的自包含版本，
+整个目录可以直接丢到任何静态托管或个人网站上。

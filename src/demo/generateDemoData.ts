@@ -56,6 +56,16 @@ function main(): void {
     },
     engagements: DEMO_ENGAGEMENTS,
     signals,
+    // Pre-split blocks, kept so the prototype can show the segmentation step and
+    // the context-split step as two distinct states of the same span.
+    timeBlocks: timeBlocks.map(b => ({
+      id: b.id,
+      startedAt: b.startedAt,
+      endedAt: b.endedAt,
+      focusSeconds: b.focusSeconds,
+      signalCount: b.signals.length,
+      flowExtended: b.flowExtended,
+    })),
     blocks: attributed,
     draft,
     learning: learningPreviews(engine, attributed),
@@ -159,25 +169,32 @@ function stats(
 }
 
 /**
- * Emit a single-file copy with the data inlined, so the prototype can be dropped
- * onto any static host (or opened over file://) as one self-contained page.
+ * Emit self-contained copies of every page into `standalone/`, with data and
+ * scripts inlined.
+ *
+ * The folder is the deliverable: drop it on any static host, or open a single
+ * file over file://, and the links between the pages still resolve.
  */
 function inlineStandalone(): void {
-  const indexPath = join(OUT_DIR, 'index.html');
-  let html: string;
-  try {
-    html = readFileSync(indexPath, 'utf8');
-  } catch {
-    return; // index.html not written yet; nothing to inline.
+  const outDir = join(OUT_DIR, 'standalone');
+  mkdirSync(outDir, { recursive: true });
+
+  for (const page of ['index.html', 'dashboard.html']) {
+    let html: string;
+    try {
+      html = readFileSync(join(OUT_DIR, page), 'utf8');
+    } catch {
+      continue; // page not written yet
+    }
+    for (const asset of ['demo-data.js', 'app.js', 'story.js']) {
+      const tag = `<script src="./${asset}"></script>`;
+      if (!html.includes(tag)) {
+        continue;
+      }
+      html = html.replace(tag, `<script>\n${readFileSync(join(OUT_DIR, asset), 'utf8')}</script>`);
+    }
+    writeFileSync(join(outDir, page), html);
   }
-  for (const asset of ['demo-data.js', 'app.js']) {
-    const source = readFileSync(join(OUT_DIR, asset), 'utf8');
-    html = html.replace(
-      new RegExp(`<script src="\\./${asset.replace('.', '\\.')}"></script>`),
-      `<script>\n${source}</script>`,
-    );
-  }
-  writeFileSync(join(OUT_DIR, 'standalone.html'), html);
 }
 
 main();
