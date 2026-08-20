@@ -1,43 +1,38 @@
 # Attest — prototype
 
-两个页面，两种读者：
+| 文件 | 给谁看 |
+|---|---|
+| `index.html` | **第一次听这件事的人**。四格漫画 → 溯源图 → 为什么必须顶层 → 原理四步 → 结果 |
+| `dashboard.html` | 已经信了、要查细节的人。完整草稿、每行的证据链、纠正学习闭环 |
 
-| 文件 | 给谁看 | 内容 |
-|---|---|---|
-| `index.html` | **第一次听这件事的人** | 看图就懂的叙事页：痛点 → 痕迹已存在 → 为什么必须是顶层设计 → 原理四步 → 敢说"不知道" → AI agent 让"小时"失效 → 结果 |
-| `dashboard.html` | 已经信了、想查细节的人 | 完整草稿、每一行的证据链、纠正学习闭环 |
+中英双语（右上角切换），亮/暗双主题。
 
-**页面上每一个小时、每一条颜色、每一个置信度标签都是构建时由 `src/core/timesheet/`
-真实算出来的**，不是手写的 JSON，也不是画的示意图。第 4 节那四步展示的是同一个真实的
-星期三被逐步切开的过程。
+页面上每一个小时、颜色、置信度标签都是构建时由 `src/core/timesheet/` **真实算出来的**。
+四格漫画里第 1 格的空表和第 4 格的填好的表是同一个 grid builder 画的 —— 前后不可能对不上。
 
 ## 放到个人网站上
 
-`standalone/` 目录是自包含版本（数据和脚本都已内联），整个目录拷走即可，
-两个页面之间的链接依然有效：
+`standalone/` 是自包含版本（数据和脚本全部内联，无外部依赖），整个目录拷走即可：
 
 ```bash
 cp -r prototype/timesheet/standalone /path/to/your-site/attest
+# → /attest/            四格漫画入口页
+# → /attest/dashboard.html   完整草稿
 ```
 
-只想放一页的话，`standalone/index.html` 单文件就能独立打开（"Full draft" 链接会失效）。
-
-本地开发直接用浏览器打开 `index.html`。
+只放一页也行 —— `standalone/index.html` 单文件双击就能开（"完整草稿" 链接会失效）。
 
 ## 重新生成
-
-改了引擎或合成数据之后：
 
 ```bash
 pnpm run demo:timesheet
 ```
 
-会刷新 `demo-data.js`、`standalone/` 下的两个页面，以及未纳入版本控制的
-`demo-data.json`（和 `demo-data.js` 内容相同，仅方便直接查看引擎输出）。
+刷新 `demo-data.js`、`standalone/` 下两个页面，以及未纳入版本控制的 `demo-data.json`。
 
 ## 数据说明
 
-全部合成。**Northgate Advisory** 是虚构的事务所，Northwind Energy / Halcyon Payments /
+全部合成。**Northgate Advisory** 是虚构事务所，Northwind Energy / Halcyon Payments /
 Meridian Health / Cascade Utilities 是虚构客户。仓库里没有任何真实机构或客户数据。
 
 合成的这一周刻意覆盖了会决定这类工具能不能活下来的几种情况：
