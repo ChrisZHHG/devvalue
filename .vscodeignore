@@ -17,6 +17,8 @@ vsc-extension-quickstart.md
 **/.vscode-test.*
 ROADMAP.md
 CLAUDE.md
+docs/**
+prototype/**
 pnpm-lock.yaml
 pnpm-workspace.yaml
 *.vsix

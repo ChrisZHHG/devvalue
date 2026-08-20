@@ -143,6 +143,25 @@ Distribution (multiple frontends):
 
 ---
 
+## Adjacent Track — Auto-Timesheet (Aug 2026)
+
+The same kernel, pointed at professional services instead of software engineering:
+reconstruct a consultant's week from Microsoft 365 activity and draft an
+evidence-linked timesheet per engagement code.
+
+- Shared core: signals → blocks → attribution → cost. DevValue's context is a git
+  branch; here it is an engagement code.
+- Status: engine + tests + deployable prototype landed. See
+  [`docs/timesheet/00-STRATEGY.md`](docs/timesheet/00-STRATEGY.md) for the market
+  read (Laurel raised $100M at $510M and is already inside EY / Grant Thornton —
+  the wedge is elsewhere) and
+  [`docs/timesheet/01-ARCHITECTURE.md`](docs/timesheet/01-ARCHITECTURE.md) for design.
+- Why it belongs next to DevValue: when half of delivery is done by agents, the
+  billable hour stops being a valid unit. DevValue already measures the thing that
+  replaces it.
+
+---
+
 ## Known Issues / Tech Debt
 - [ ] EDH can't switch projects — VS Code limitation, not a bug
 - [ ] Focus Time 0s until user interacts with editor

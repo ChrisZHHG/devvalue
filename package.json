@@ -2,7 +2,7 @@
   "name": "devvalue",
   "publisher": "ChrisZhang",
   "displayName": "devvalue",
-  "description": "Measure the true cost of AI-era software engineering — human cognition + AI compute, per feature.",
+  "description": "Measure the true cost of AI-era software engineering \u2014 human cognition + AI compute, per feature.",
   "version": "0.0.4",
   "repository": {
     "type": "git",
@@ -57,7 +57,7 @@
         "devvalue.maxIdleTimeout": {
           "type": "number",
           "default": 300,
-          "description": "Base idle timeout in seconds. Extends 4× in flow state (20 min max)."
+          "description": "Base idle timeout in seconds. Extends 4\u00d7 in flow state (20 min max)."
         },
         "devvalue.flowThreshold": {
           "type": "number",
@@ -89,7 +89,9 @@
     "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "demo:timesheet": "esbuild src/demo/generateDemoData.ts --bundle --platform=node --format=cjs --outfile=out/generateDemoData.cjs --log-level=warning && node out/generateDemoData.cjs",
+    "test:core": "esbuild src/core/timesheet/timesheet.spec.ts --bundle --platform=node --format=cjs --outfile=out/timesheet.spec.cjs --log-level=warning && node --test out/timesheet.spec.cjs"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

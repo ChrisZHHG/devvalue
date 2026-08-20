@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Attest — evidence-linked timesheets, drafted from the work you already did</title>
+<meta name="description" content="A prototype: reconstructing a professional-services timesheet from Microsoft 365 activity signals, with every hour traceable to a source record.">
+<style>
+/* ─────────────────────────────────────────────────────────────────────────────
+   Palette. Roles only — the light/dark values swap in one place.
+   Categorical slots are assigned per engagement code and never recycled, so a
+   filter that hides a row cannot repaint the rows that remain.
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --plane: #f9f9f7;
+  --ink-1: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-3: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --raise: rgba(11, 11, 11, 0.04);
+
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --s4: #eda100;
+  --s5: #e87ba4;
+  --s6: #008300;
+  --unassigned: #b8b6ad;
+
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-1: #1a1a19;
+  --plane: #0d0d0d;
+  --ink-1: #ffffff;
+  --ink-2: #c3c2b7;
+  --ink-3: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --raise: rgba(255, 255, 255, 0.04);
+
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --s4: #c98500;
+  --s5: #d55181;
+  --s6: #008300;
+  --unassigned: #55534d;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-1);
+  background: var(--plane);
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { line-height: 1.2; margin: 0; font-weight: 640; letter-spacing: -0.01em; }
+h1 { font-size: 30px; }
+h2 { font-size: 20px; }
+h3 { font-size: 15px; }
+p { margin: 0; }
+a { color: var(--s1); }
+code, .mono { font-variant-numeric: tabular-nums; }
+
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px 96px; }
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px 24px;
+}
+section { margin-top: 28px; }
+.sec-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.sec-sub { color: var(--ink-2); font-size: 13.5px; max-width: 76ch; margin-top: 6px; }
+.eyebrow {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+header { border-bottom: 1px solid var(--border); background: var(--surface-1); }
+.hbar { max-width: 1120px; margin: 0 auto; padding: 26px 24px 30px; }
+.hrow { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.lede { font-size: 16.5px; color: var(--ink-2); max-width: 62ch; margin-top: 10px; }
+.badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.badge {
+  font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--ink-2); background: var(--raise);
+}
+.btn {
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  padding: 7px 13px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-1);
+}
+.btn:hover { background: var(--raise); }
+.btn[aria-pressed="true"] { background: var(--s1); border-color: var(--s1); color: #fff; }
+.btn-primary { background: var(--s1); border-color: var(--s1); color: #fff; }
+.btn-primary:hover { filter: brightness(1.08); background: var(--s1); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Stat tiles ───────────────────────────────────────────────────────────── */
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 26px; }
+.tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 15px 16px; }
+.tile-lbl { font-size: 11.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; }
+.tile-val { font-size: 30px; font-weight: 660; letter-spacing: -0.02em; margin-top: 4px; }
+.tile-val small { font-size: 15px; font-weight: 600; color: var(--ink-2); margin-left: 2px; }
+.tile-note { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; }
+@media (max-width: 860px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+
+/* ── Legend ───────────────────────────────────────────────────────────────── */
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 14px 0 18px; }
+.lg { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-2); }
+.swatch { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+.swatch.hatched { background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.34) 0 2px, transparent 2px 4px); }
+
+/* ── Week allocation chart ────────────────────────────────────────────────── */
+.chart { display: grid; grid-template-columns: 96px 1fr; gap: 6px 12px; }
+.c-day { font-size: 12.5px; color: var(--ink-2); text-align: right; padding-top: 9px; font-variant-numeric: tabular-nums; }
+.track { position: relative; height: 34px; }
+.bar { position: absolute; inset: 0; display: flex; gap: 2px; }
+.seg {
+  position: relative; border-radius: 2px; min-width: 3px;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.bar .seg:first-child { border-radius: 4px 2px 2px 4px; }
+.seg-lbl { font-size: 11.5px; font-weight: 640; color: #fff; white-space: nowrap; padding: 0 4px; }
+.seg.pale .seg-lbl { color: var(--ink-1); }
+.seg.hatched { background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.30) 0 3px, transparent 3px 6px); }
+.gapfill {
+  position: absolute; top: 0; bottom: 0; border: 1px dashed var(--axis);
+  border-left: none; border-radius: 0 4px 4px 0; opacity: 0.85;
+}
+.gapfill span { position: absolute; left: 7px; top: 8px; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+.c-axis { grid-column: 2; display: flex; justify-content: space-between; border-top: 1px solid var(--axis); padding-top: 5px; margin-top: 2px; }
+.c-axis span { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* ── Confidence meter ────────────────────────────────────────────────────── */
+.meter { display: flex; gap: 2px; height: 12px; margin: 12px 0 10px; }
+.meter div { border-radius: 2px; }
+.meter-key { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--ink-2); }
+
+/* ── Table ────────────────────────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th {
+  text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink-3);
+  padding: 0 10px 8px; border-bottom: 1px solid var(--axis); white-space: nowrap;
+}
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td { padding: 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+tbody tr.row { cursor: pointer; }
+tbody tr.row:hover td { background: var(--raise); }
+tbody tr.row.open td { background: var(--raise); }
+.eng { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.eng-code { font-size: 11.5px; color: var(--ink-3); font-weight: 500; }
+.narr { color: var(--ink-2); max-width: 40ch; }
+.pill {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  font-size: 11.5px; font-weight: 640; padding: 2px 8px 2px 6px; border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.pill.high    { color: #0a7a0a; background: rgba(12,163,12,.12); }
+.pill.medium  { color: #8a5b00; background: rgba(250,178,25,.18); }
+.pill.low     { color: #a04a22; background: rgba(236,131,90,.18); }
+.pill.unattributed { color: var(--ink-2); background: var(--raise); }
+:root[data-theme="dark"] .pill.high { color: #4bd44b; }
+:root[data-theme="dark"] .pill.medium { color: var(--warning); }
+:root[data-theme="dark"] .pill.low { color: var(--serious); }
+.tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--raise); border: 1px solid var(--border); color: var(--ink-2); }
+tr.accepted td:first-child { box-shadow: inset 3px 0 0 var(--good); }
+
+/* ── Evidence drawer ─────────────────────────────────────────────────────── */
+tr.detail td { background: var(--plane); padding: 0 10px 16px; }
+.ev-head { font-size: 12px; color: var(--ink-2); margin: 12px 0 8px; }
+.ev-list { display: grid; gap: 4px; max-height: 260px; overflow-y: auto; }
+.ev {
+  display: grid; grid-template-columns: 78px 1fr auto; gap: 10px; align-items: baseline;
+  font-size: 12.5px; padding: 5px 8px; border-radius: 6px; background: var(--surface-1);
+  border: 1px solid var(--border);
+}
+.ev-src { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); }
+.ev-why { color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
+.reject {
+  margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+  background: var(--raise); border: 1px solid var(--border); font-size: 12.5px; color: var(--ink-2);
+}
+
+/* ── Signal timeline ─────────────────────────────────────────────────────── */
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 18px; }
+.tl { position: relative; height: 78px; border-radius: 8px; background: var(--raise); overflow: hidden; }
+.tl-block { position: absolute; top: 8px; height: 26px; border-radius: 4px; opacity: 0.9; }
+.tl-block.hatched { background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.30) 0 3px, transparent 3px 6px); }
+.tl-block.flagged { outline: 1.5px dashed var(--ink-1); outline-offset: -2px; }
+.tl-sig { position: absolute; top: 44px; width: 4px; height: 4px; border-radius: 50%; }
+.tl-hours { display: flex; justify-content: space-between; margin-top: 6px; }
+.tl-hours span { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.tl-note { font-size: 12.5px; color: var(--ink-2); margin-top: 10px; }
+
+/* ── Learning panel ──────────────────────────────────────────────────────── */
+.learn { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 820px) { .learn { grid-template-columns: 1fr; } }
+.rule {
+  display: flex; align-items: center; gap: 9px; font-size: 12.5px;
+  padding: 7px 10px; border-radius: 7px; background: var(--surface-1);
+  border: 1px solid var(--border); margin-top: 6px;
+}
+.rule code { font-size: 12px; color: var(--ink-1); }
+.kind { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); min-width: 52px; }
+
+/* ── Pipeline & limits ───────────────────────────────────────────────────── */
+.pipe { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 16px; }
+@media (max-width: 860px) { .pipe { grid-template-columns: 1fr 1fr; } }
+.step { padding: 14px; border-radius: 10px; background: var(--raise); border: 1px solid var(--border); }
+.step-n { font-size: 11px; font-weight: 700; color: var(--ink-3); }
+.step h3 { margin: 3px 0 5px; }
+.step p { font-size: 12.5px; color: var(--ink-2); }
+.limits { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; margin-top: 14px; }
+@media (max-width: 820px) { .limits { grid-template-columns: 1fr; } }
+.limit { font-size: 13px; color: var(--ink-2); padding-left: 18px; position: relative; }
+.limit::before { content: "—"; position: absolute; left: 0; color: var(--ink-3); }
+.limit b { color: var(--ink-1); font-weight: 640; }
+
+footer { border-top: 1px solid var(--border); margin-top: 44px; padding-top: 18px; font-size: 12.5px; color: var(--ink-3); }
+
+/* ── Tooltip ─────────────────────────────────────────────────────────────── */
+#tip {
+  position: fixed; z-index: 60; pointer-events: none; opacity: 0;
+  transition: opacity .1s; max-width: 280px;
+  background: var(--ink-1); color: var(--surface-1);
+  font-size: 12.5px; line-height: 1.45; padding: 8px 10px; border-radius: 7px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.22);
+}
+#tip b { font-weight: 660; }
+#tip .t-dim { opacity: .72; }
+</style>
+</head>
+<body>
+<header>
+  <div class="hbar">
+    <div class="hrow">
+      <div>
+        <div class="eyebrow">Prototype · built on the DevValue core</div>
+        <h1 style="margin-top:6px">Attest</h1>
+        <p class="lede">
+          A week of professional-services time, reconstructed from the traces the work
+          already left in Microsoft&nbsp;365 — and rendered as a timesheet where every
+          hour points back to the record that justifies it.
+        </p>
+        <div class="badges">
+          <span class="badge">Synthetic data · fictional firm</span>
+          <span class="badge">Metadata only · no document contents</span>
+          <span class="badge" id="badge-engine">—</span>
+        </div>
+      </div>
+      <button class="btn" id="theme" aria-label="Toggle colour theme">Dark</button>
+    </div>
+    <div class="tiles" id="tiles"></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section class="card">
+    <div class="sec-head"><h2>The week it drafted</h2></div>
+    <p class="sec-sub">
+      Hours per day by engagement code. The dashed remainder is time the standard
+      8-hour day expects but no signal explains — shown rather than filled in,
+      because a tool that quietly rounds a week up to 40 hours is a liability,
+      not a convenience.
+    </p>
+    <div class="legend" id="legend"></div>
+    <div class="chart" id="week"></div>
+  </section>
+
+  <section class="card">
+    <div class="sec-head">
+      <h2>Draft timesheet</h2>
+      <span class="eyebrow" id="draft-week"></span>
+      <span style="flex:1"></span>
+      <button class="btn btn-primary" id="accept">Accept all high-confidence rows</button>
+    </div>
+    <p class="sec-sub">
+      Click any row to see the source records behind it. Confidence is derived, not
+      decorative: a row is <b>high</b> only when every block of time inside it was
+      placed by an authoritative locator — a client folder, a counterparty domain, a
+      repository, a ticket project.
+    </p>
+    <div class="meter" id="meter"></div>
+    <div class="meter-key" id="meter-key"></div>
+    <div style="overflow-x:auto; margin-top:16px">
+      <table>
+        <thead><tr>
+          <th>Date</th><th>Engagement</th><th class="num">Hours</th>
+          <th>Confidence</th><th>Drafted description</th><th class="num">Evidence</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="sec-head"><h2>What it actually saw</h2></div>
+    <p class="sec-sub">
+      The raw layer for one day. Dots are individual signals — a file touched, a
+      reply sent, a channel post, a call attended. Bars above them are the blocks
+      the engine cut from those signals: first by time, then again wherever the
+      subject of the work changed.
+    </p>
+    <div class="chips" id="daychips"></div>
+    <div class="tl" id="timeline"></div>
+    <div class="tl-hours" id="tl-hours"></div>
+    <p class="tl-note" id="tl-note"></p>
+  </section>
+
+  <section class="card">
+    <div class="sec-head"><h2>Where the review effort goes</h2></div>
+    <p class="sec-sub">
+      The unassigned rows are the product working, not failing. Below is the one
+      that matters: a newly opened engagement the firm has no rules for yet. One
+      correction is all the system gets, so it has to extract every reusable rule
+      from it.
+    </p>
+    <div class="learn" id="learn"></div>
+  </section>
+
+  <section class="card">
+    <div class="sec-head"><h2>How it works</h2></div>
+    <div class="pipe">
+      <div class="step">
+        <div class="step-n">01</div><h3>Normalise</h3>
+        <p>Connectors turn calendar entries, call records, file activity, mail, tickets,
+        commits and agent sessions into one signal shape: when, what subject, which
+        folder, which counterparty, which link back. Metadata only.</p>
+      </div>
+      <div class="step">
+        <div class="step-n">02</div><h3>Segment</h3>
+        <p>Signals become blocks of real working time. The tolerated gap flexes with
+        signal density, so reading and reviewing counts as work — but never stretches
+        across a lunch break.</p>
+      </div>
+      <div class="step">
+        <div class="step-n">03</div><h3>Attribute</h3>
+        <p>Each block is scored against every engagement. The winner, the runner-up it
+        beat, the margin between them and the individual records behind each are all
+        retained. A keyword alone never wins.</p>
+      </div>
+      <div class="step">
+        <div class="step-n">04</div><h3>Draft</h3>
+        <p>Blocks become rows at the firm's rounding policy — redistributed so the day's
+        total is preserved — with a description grounded strictly in the evidence, and
+        unexplained time left visible.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="sec-head"><h2>What this deliberately does not do</h2></div>
+    <p class="sec-sub">
+      The failure mode for this category is not missing an hour. It is confidently
+      billing the wrong client, or reading like surveillance to the people it runs on.
+      Both are design problems, so they are answered in the design.
+    </p>
+    <div class="limits">
+      <p class="limit"><b>No keystroke or screen capture.</b> The default signal set is
+      what the tenant already records for compliance. The desktop focus agent is
+      optional, local, and off.</p>
+      <p class="limit"><b>No document contents.</b> Signals carry titles, paths and
+      counterparty domains. The engine never needs to read a file to place it.</p>
+      <p class="limit"><b>No silent submission.</b> Nothing is filed without a human
+      accepting it. The draft is a starting point, not an assertion.</p>
+      <p class="limit"><b>No invented hours.</b> Rounding redistributes within a day and
+      never inflates its total; unattributed time stays its own row.</p>
+      <p class="limit"><b>No cross-billing.</b> A sub-threshold fragment pools only into
+      a row of the same chargeability — non-chargeable minutes cannot drift onto a
+      client's bill.</p>
+      <p class="limit"><b>No learning from ambiguity.</b> A correction on a block with two
+      outside parties teaches nothing: a wrong rule misbills every future thread with
+      that counterparty.</p>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      Synthetic data throughout — <b>Northgate Advisory</b> and its clients are fictional.
+      Every hour, confidence label and evidence row on this page is produced at build
+      time by the engine in <code>src/core/timesheet/</code>, not authored by hand.
+    </p>
+    <p style="margin-top:6px" id="foot-meta"></p>
+  </footer>
+</div>
+
+<div id="tip" role="tooltip"></div>
+<script src="./demo-data.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>
